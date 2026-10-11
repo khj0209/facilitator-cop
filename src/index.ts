@@ -1,8 +1,8 @@
 import Fastify from "fastify";
+import { registerRoutes } from "./routes.js";
 
 const app = Fastify({ logger: true });
-
-app.get("/health", async () => ({ status: "ok", service: "agent-wallet" }));
+registerRoutes(app);
 
 const port = Number(process.env.PORT ?? 4003);
 app.listen({ port }, (err) => {
