@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "fastify": "^5.12.5",
+    "viem": "^2.57.4",
     "x402-contracts": "file:../x402-contracts"
   },
   "devDependencies": {

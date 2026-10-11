@@ -1,0 +1,49 @@
+import type { FastifyInstance } from "fastify";
+import { FacilitatorRequestSchema, type Network } from "x402-contracts";
+import type { ChainAdapter } from "./adapters/types.js";
+
+export function registerRoutes(
+  app: FastifyInstance,
+  adapters: Partial<Record<Network, ChainAdapter>>,
+) {
+  app.get("/health", async () => ({ status: "ok", service: "facilitator" }));
+
+  app.get("/supported", async () => ({
+    kinds: Object.keys(adapters).map((network) => ({
+      scheme: "exact",
+      network,
+    })),
+  }));
+
+  app.post("/verify", async (req, reply) => {
+    const parsed = FacilitatorRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ isValid: false, reason: "invalid request body" });
+    }
+    const { payload, requirements } = parsed.data;
+    const adapter = adapters[requirements.network];
+    if (!adapter) {
+      return reply
+        .code(400)
+        .send({ isValid: false, reason: `network ${requirements.network} not supported` });
+    }
+    return adapter.verifyPayment(payload, requirements);
+  });
+
+  app.post("/settle", async (req, reply) => {
+    const parsed = FacilitatorRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply
+        .code(400)
+        .send({ success: false, reason: "invalid request body" });
+    }
+    const { payload, requirements } = parsed.data;
+    const adapter = adapters[requirements.network];
+    if (!adapter) {
+      return reply
+        .code(400)
+        .send({ success: false, network: requirements.network, reason: `network ${requirements.network} not supported` });
+    }
+    return adapter.settlePayment(payload, requirements);
+  });
+}
