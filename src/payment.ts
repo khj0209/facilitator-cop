@@ -60,3 +60,10 @@ export const SupportedKindSchema = z.object({
 });
 
 export type SupportedKind = z.infer<typeof SupportedKindSchema>;
+
+export const FacilitatorRequestSchema = z.object({
+  payload: PaymentPayloadSchema,
+  requirements: PaymentRequirementsSchema,
+});
+
+export type FacilitatorRequest = z.infer<typeof FacilitatorRequestSchema>;
