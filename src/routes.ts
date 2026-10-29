@@ -115,7 +115,9 @@ export function registerRoutes(app: FastifyInstance) {
       from: address,
       to: requirements.payTo,
       value: requirements.amount,
-      validAfter: String(now - 5),
+      // Backdated so the authorization is already valid at the latest block's timestamp,
+      // which can trail wall-clock time by a block or more when the Facilitator settles.
+      validAfter: String(now - 600),
       validBefore: String(now + requirements.maxTimeoutSeconds),
       nonce: `0x${randomBytes(32).toString("hex")}`,
     };
