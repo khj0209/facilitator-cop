@@ -3,3 +3,4 @@ artifacts/
 cache/
 .env
 .DS_Store
+*.recovery.lock
