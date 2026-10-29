@@ -9,9 +9,10 @@ export function registerRoutes(
   app.get("/health", async () => ({ status: "ok", service: "facilitator" }));
 
   app.get("/supported", async () => ({
-    kinds: Object.keys(adapters).map((network) => ({
+    kinds: Object.values(adapters).map((adapter) => ({
       scheme: "exact",
-      network,
+      network: adapter.network,
+      asset: adapter.asset,
     })),
   }));
 
