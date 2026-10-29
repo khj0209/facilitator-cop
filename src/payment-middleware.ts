@@ -3,6 +3,7 @@ import {
   PaymentPayloadSchema,
   type PaymentPayload,
   type PaymentRequirements,
+  type SettleResult,
   type VerifyResult,
 } from "x402-contracts";
 import { config } from "./config.js";
@@ -11,6 +12,16 @@ declare module "fastify" {
   interface FastifyRequest {
     paymentContext?: { payload: PaymentPayload; requirements: PaymentRequirements };
   }
+}
+
+// Payments already accepted by this server, keyed by payer + EIP-3009 nonce. Settlement is
+// async and takes a block or more, so until it lands the on-chain nonce check in /verify
+// can't stop the same X-PAYMENT header from being replayed for free content.
+const acceptedPayments = new Set<string>();
+
+function paymentKey(payload: PaymentPayload): string {
+  const { from, nonce } = payload.payload.authorization;
+  return `${from.toLowerCase()}:${nonce.toLowerCase()}`;
 }
 
 interface PaymentOptions {
@@ -51,13 +62,27 @@ export function requirePayment(opts: PaymentOptions) {
       return reply.code(402).send({ error: "invalid X-PAYMENT header", requirements });
     }
 
-    const verifyRes = (await fetch(`${config.facilitatorUrl}/verify`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ payload, requirements }),
-    }).then((r) => r.json())) as VerifyResult;
+    // Claim before the async /verify call so two concurrent replays can't both pass.
+    const key = paymentKey(payload);
+    if (acceptedPayments.has(key)) {
+      return reply.code(402).send({ error: "payment already used", requirements });
+    }
+    acceptedPayments.add(key);
+
+    let verifyRes: VerifyResult;
+    try {
+      verifyRes = (await fetch(`${config.facilitatorUrl}/verify`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ payload, requirements }),
+      }).then((r) => r.json())) as VerifyResult;
+    } catch (err) {
+      acceptedPayments.delete(key);
+      throw err;
+    }
 
     if (!verifyRes.isValid) {
+      acceptedPayments.delete(key);
       return reply
         .code(402)
         .send({ error: verifyRes.reason ?? "payment invalid", requirements });
@@ -67,12 +92,23 @@ export function requirePayment(opts: PaymentOptions) {
   };
 }
 
-export async function settlePaymentOnResponse(req: FastifyRequest) {
+export async function settlePaymentOnResponse(req: FastifyRequest, reply: FastifyReply) {
   const ctx = req.paymentContext;
   if (!ctx) return;
+  // Only charge for requests that were actually served.
+  if (reply.statusCode >= 400) return;
   fetch(`${config.facilitatorUrl}/settle`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(ctx),
-  }).catch((err) => req.log.error({ err }, "settle call failed"));
+  })
+    .then((r) => r.json() as Promise<SettleResult>)
+    .then((result) => {
+      if (result.success) {
+        req.log.info({ txHash: result.txHash, network: result.network }, "payment settled");
+      } else {
+        req.log.error({ reason: result.reason, txHash: result.txHash }, "payment settlement failed");
+      }
+    })
+    .catch((err) => req.log.error({ err }, "settle call failed"));
 }

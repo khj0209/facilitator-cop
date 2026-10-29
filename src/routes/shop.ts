@@ -19,9 +19,9 @@ interface Order {
 }
 
 const PRODUCTS: Product[] = [
-  { id: "p1", name: "무선 키보드", priceAtomic: "50000000000000000" },
-  { id: "p2", name: "USB-C 허브", priceAtomic: "30000000000000000" },
-  { id: "p3", name: "노트북 스탠드", priceAtomic: "20000000000000000" },
+  { id: "p1", name: "무선 키보드", priceAtomic: "50000" },
+  { id: "p2", name: "USB-C 허브", priceAtomic: "30000" },
+  { id: "p3", name: "노트북 스탠드", priceAtomic: "20000" },
 ];
 
 const ORDERS = new Map<string, Order>();
@@ -55,7 +55,7 @@ export function registerShopRoutes(app: FastifyInstance) {
 
   app.get(
     "/shop/orders/:id",
-    { preHandler: requirePayment({ price: () => "5000000000000000" }) },
+    { preHandler: requirePayment({ price: () => "5000" }) },
     async (req, reply) => {
       const { id } = req.params as { id: string };
       const order = ORDERS.get(id);

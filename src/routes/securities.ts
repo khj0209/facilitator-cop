@@ -15,7 +15,7 @@ const PORTFOLIO = [
 export function registerSecuritiesRoutes(app: FastifyInstance) {
   app.get(
     "/securities/quotes/:symbol",
-    { preHandler: requirePayment({ price: () => "10000000000000000" }) },
+    { preHandler: requirePayment({ price: () => "10000" }) },
     async (req) => {
       const { symbol } = req.params as { symbol: string };
       const price = QUOTES[symbol.toUpperCase()];
@@ -28,13 +28,13 @@ export function registerSecuritiesRoutes(app: FastifyInstance) {
 
   app.get(
     "/securities/portfolio",
-    { preHandler: requirePayment({ price: () => "10000000000000000" }) },
+    { preHandler: requirePayment({ price: () => "10000" }) },
     async () => ({ holdings: PORTFOLIO }),
   );
 
   app.post(
     "/securities/orders",
-    { preHandler: requirePayment({ price: () => "1000000000000000000" }) },
+    { preHandler: requirePayment({ price: () => "1000000" }) },
     async (req) => {
       const body = req.body as { symbol: string; side: "buy" | "sell"; quantity: number };
       return {

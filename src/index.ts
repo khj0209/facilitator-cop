@@ -7,8 +7,8 @@ const app = Fastify({ logger: true });
 
 app.get("/health", async () => ({ status: "ok", service: "resource-server" }));
 
-app.addHook("onResponse", async (req) => {
-  await settlePaymentOnResponse(req);
+app.addHook("onResponse", async (req, reply) => {
+  await settlePaymentOnResponse(req, reply);
 });
 
 registerSecuritiesRoutes(app);
