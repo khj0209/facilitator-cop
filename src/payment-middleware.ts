@@ -104,10 +104,11 @@ export async function settlePaymentOnResponse(req: FastifyRequest, reply: Fastif
   })
     .then((r) => r.json() as Promise<SettleResult>)
     .then((result) => {
+      const { from: payer, nonce } = ctx.payload.payload.authorization;
       if (result.success) {
-        req.log.info({ txHash: result.txHash, network: result.network }, "payment settled");
+        req.log.info({ txHash: result.txHash, network: result.network, payer, nonce }, "payment settled");
       } else {
-        req.log.error({ reason: result.reason, txHash: result.txHash }, "payment settlement failed");
+        req.log.error({ reason: result.reason, txHash: result.txHash, payer, nonce }, "payment settlement failed");
       }
     })
     .catch((err) => req.log.error({ err }, "settle call failed"));
