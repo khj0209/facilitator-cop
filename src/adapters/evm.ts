@@ -140,26 +140,33 @@ export class EvmAdapter implements ChainAdapter {
     const domainVersion =
       typeof requirements.extra?.version === "string" ? requirements.extra.version : "1";
 
-    const isValid = await verifyTypedData({
-      address: authorization.from as Address,
-      domain: {
-        name: domainName,
-        version: domainVersion,
-        chainId: this.chain.id,
-        verifyingContract: requirements.asset as Address,
-      },
-      types: TRANSFER_WITH_AUTHORIZATION_TYPES,
-      primaryType: "TransferWithAuthorization",
-      message: {
-        from: authorization.from as Address,
-        to: authorization.to as Address,
-        value: BigInt(authorization.value),
-        validAfter,
-        validBefore,
-        nonce: authorization.nonce as Hex,
-      },
-      signature: signature as Hex,
-    });
+    let isValid: boolean;
+    try {
+      isValid = await verifyTypedData({
+        address: authorization.from as Address,
+        domain: {
+          name: domainName,
+          version: domainVersion,
+          chainId: this.chain.id,
+          verifyingContract: requirements.asset as Address,
+        },
+        types: TRANSFER_WITH_AUTHORIZATION_TYPES,
+        primaryType: "TransferWithAuthorization",
+        message: {
+          from: authorization.from as Address,
+          to: authorization.to as Address,
+          value: BigInt(authorization.value),
+          validAfter,
+          validBefore,
+          nonce: authorization.nonce as Hex,
+        },
+        signature: signature as Hex,
+      });
+    } catch {
+      // viem throws, rather than returning false, for malformed signatures (bad length,
+      // r/s not on the curve).
+      isValid = false;
+    }
 
     if (!isValid) {
       return { isValid: false, reason: "signature verification failed" };
