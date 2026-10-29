@@ -1,0 +1,13 @@
+{
+  "name": "e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Testnet end-to-end test for the x402 demo (Agent Wallet + Resource Server + Facilitator)",
+  "type": "module",
+  "scripts": {
+    "test:testnet": "node run.mjs"
+  },
+  "engines": {
+    "node": ">=22.9"
+  }
+}
