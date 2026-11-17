@@ -9,6 +9,9 @@ npm start   # then open http://localhost:4000
 
 Ctrl+C stops everything. Service logs go to `logs/`.
 
+**Presenting the demo?** See [DEMO_GUIDE.md](DEMO_GUIDE.md) (Korean): setup checks, a
+step-by-step script with what to point at in each service's log, and troubleshooting.
+
 ## What the page shows
 
 - **Agent wallet**: address, DEMO and ETH balances (ETH stays 0: payments are gasless), and a

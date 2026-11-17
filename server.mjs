@@ -10,6 +10,7 @@ import { createServer } from "node:http";
 import { createWriteStream, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createFormatter, toTerminalLine } from "./log-format.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
@@ -71,6 +72,21 @@ let settlerAddress = null;
 const settlementFailures = new Map();
 const paymentKey = (from, nonce) => `${from.toLowerCase()}:${nonce.toLowerCase()}`;
 
+// Formatted demo log events: printed to the terminal and streamed to the page (SSE).
+const LOG_BACKLOG = 500;
+const logEvents = [];
+const logClients = new Set();
+let logSeq = 0;
+
+function publishLog(event) {
+  event.seq = ++logSeq;
+  logEvents.push(event);
+  if (logEvents.length > LOG_BACKLOG) logEvents.shift();
+  console.log(toTerminalLine(event));
+  const data = `data: ${JSON.stringify(event)}\n\n`;
+  for (const client of logClients) client.write(data);
+}
+
 function start(name, repo, env) {
   const logDir = path.join(HERE, "logs");
   mkdirSync(logDir, { recursive: true });
@@ -81,6 +97,7 @@ function start(name, repo, env) {
     env: { ...process.env, ...env },
     detached: true, // own process group, so the whole tree can be stopped
   });
+  const format = createFormatter(name);
   let buf = "";
   const onData = (chunk) => {
     out.write(chunk);
@@ -92,9 +109,11 @@ function start(name, repo, env) {
       try {
         const entry = JSON.parse(line);
         if (entry.settler) settlerAddress = entry.settler;
-        if (entry.msg === "payment settlement failed" && entry.payer && entry.nonce) {
-          settlementFailures.set(paymentKey(entry.payer, entry.nonce), entry.reason ?? "unknown");
+        if (entry.event === "payment.settle_failed" && entry.payer && entry.nonce) {
+          settlementFailures.set(paymentKey(entry.payer, entry.nonce), entry.reason ?? entry.err?.message ?? "unknown");
         }
+        const event = format(entry);
+        if (event) publishLog(event);
       } catch {
         // non-JSON output
       }
@@ -296,6 +315,13 @@ const server = createServer(async (req, res) => {
     if (proxied) return await proxy(req, res, proxied[1], proxied[2] + url.search);
 
     if (req.method === "GET" && url.pathname === "/api/state") return send(res, 200, await state());
+    if (req.method === "GET" && url.pathname === "/api/logs") {
+      res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+      for (const event of logEvents) res.write(`data: ${JSON.stringify(event)}\n\n`);
+      logClients.add(res);
+      req.on("close", () => logClients.delete(res));
+      return;
+    }
     if (req.method === "POST" && url.pathname === "/api/delegation") {
       return send(res, 200, await setDelegation(JSON.parse(await readBody(req))));
     }
