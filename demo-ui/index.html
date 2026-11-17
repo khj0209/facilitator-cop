@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>x402 결제 데모</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1b1f24; --muted: #5b6470; --border: #dde1e6;
+    --accent: #2f5bd3; --accent-text: #ffffff; --ok: #1f7a4d; --ok-bg: #e3f4ea;
+    --warn: #8a5a00; --warn-bg: #fdf1d8; --bad: #b42318; --bad-bg: #fde7e5; --code-bg: #f1f3f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a; --panel: #1a1e25; --text: #e6e9ee; --muted: #9aa3ae; --border: #2c323b;
+      --accent: #6f93ff; --accent-text: #0d1117; --ok: #5fd39a; --ok-bg: #173327;
+      --warn: #f2c063; --warn-bg: #3a2f17; --bad: #ff8a80; --bad-bg: #3b1d1b; --code-bg: #232831;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif; }
+  header { padding: 20px 24px 8px; }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  main { display: grid; grid-template-columns: 340px 1fr; gap: 16px; padding: 16px 24px 40px; align-items: start; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 12px 16px 32px; } header { padding: 16px 16px 4px; } }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .panel h2 { margin: 0 0 12px; font-size: 15px; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .addr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  a { color: var(--accent); }
+  button { font: inherit; border: 1px solid var(--border); background: var(--panel); color: var(--text);
+    padding: 7px 12px; border-radius: 7px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  label { display: block; color: var(--muted); font-size: 12px; margin: 10px 0 4px; }
+  input, select, textarea { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--bg); color: var(--text); }
+  textarea { font-family: ui-monospace, Menlo, monospace; font-size: 12px; min-height: 52px; }
+  .steps { display: grid; gap: 12px; }
+  .step { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--panel); }
+  .step-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; flex-wrap: wrap; }
+  .step-title { font-weight: 600; }
+  .step-title small { font-weight: 400; color: var(--muted); margin-left: 6px; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .b-ok { background: var(--ok-bg); color: var(--ok); }
+  .b-warn { background: var(--warn-bg); color: var(--warn); }
+  .b-bad { background: var(--bad-bg); color: var(--bad); }
+  .note { color: var(--muted); margin: 8px 0 0; }
+  .summary { margin: 8px 0 0; }
+  pre { background: var(--code-bg); border-radius: 6px; padding: 10px; margin: 8px 0 0; overflow: auto;
+    font-size: 12px; max-height: 260px; }
+  details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
+  .attack-result { margin-top: 8px; }
+  .error { color: var(--bad); }
+  .logs { margin: 0 24px 40px; }
+  @media (max-width: 900px) { .logs { margin: 0 16px 32px; } }
+  .logs-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .logs-head h2 { margin: 0; }
+  .lanes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 900px) { .lanes { grid-template-columns: 1fr; } }
+  .lane { border: 1px solid var(--border); border-radius: 8px; display: flex; flex-direction: column; min-width: 0; }
+  .lane-title { padding: 8px 10px; font-weight: 600; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+  .lane-title small { color: var(--muted); font-weight: 400; }
+  .lane[data-service="resourceServer"] .lane-title { border-top: 3px solid #2aa3b8; border-radius: 8px 8px 0 0; }
+  .lane[data-service="agentWallet"] .lane-title { border-top: 3px solid #a35bd1; border-radius: 8px 8px 0 0; }
+  .lane[data-service="facilitator"] .lane-title { border-top: 3px solid #d19a2a; border-radius: 8px 8px 0 0; }
+  .lane-body { height: 380px; overflow-y: auto; padding: 4px 0; }
+  .log { padding: 5px 10px; border-left: 3px solid transparent; font-size: 12.5px; }
+  .log + .log { border-top: 1px dashed var(--border); }
+  .log.ok { border-left-color: var(--ok); }
+  .log.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+  .log.error { border-left-color: var(--bad); background: var(--bad-bg); }
+  .log-time { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 6px; font-size: 11.5px; }
+  .log details summary { margin: 2px 0 0; font-size: 11.5px; }
+  .log pre { max-height: 180px; }
+  .chip { display: inline-block; font: 600 11px ui-monospace, Menlo, monospace; padding: 0 6px; border-radius: 4px;
+    color: #fff; cursor: pointer; margin-left: 4px; vertical-align: 1px; border: 0; }
+  .filter-note { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>x402 에이전트 결제 데모</h1>
+  <p>AI 에이전트가 유료 API를 호출하고, 위임받은 한도 안에서 DEMO 코인으로 결제하며, Facilitator가 가스를 대신 내고 온체인 정산합니다. (Ethereum Sepolia)</p>
+</header>
+
+<main>
+  <aside>
+    <section class="panel">
+      <div class="row" style="justify-content:space-between"><h2 style="margin:0">에이전트 지갑</h2><button id="refresh">새로고침</button></div>
+      <dl class="kv" style="margin-top:12px">
+        <dt>주소</dt><dd id="agent-addr" class="addr">…</dd>
+        <dt>DEMO</dt><dd id="agent-demo">…</dd>
+        <dt>ETH (가스)</dt><dd id="agent-eth">…</dd>
+      </dl>
+      <div class="row" style="margin-top:10px"><button id="topup">owner에게서 1 DEMO 충전</button></div>
+      <p id="topup-msg" class="note"></p>
+    </section>
+
+    <section class="panel">
+      <h2>정산 참여자</h2>
+      <dl class="kv">
+        <dt>Facilitator</dt><dd id="settler-addr" class="addr">…</dd>
+        <dt>Facilitator ETH</dt><dd id="settler-eth">…</dd>
+        <dt>판매자(payTo)</dt><dd id="payto-addr" class="addr">…</dd>
+        <dt>판매자 DEMO</dt><dd id="payto-demo">…</dd>
+        <dt>토큰</dt><dd id="asset" class="addr">…</dd>
+      </dl>
+    </section>
+
+    <section class="panel">
+      <h2>위임 정책 (Permission Delegation)</h2>
+      <label for="p-resources">허용 리소스 (한 줄에 하나, *로 접두사 매칭)</label>
+      <textarea id="p-resources"></textarea>
+      <label for="p-tx">건당 최대 (DEMO)</label>
+      <input id="p-tx" type="number" step="0.01" min="0">
+      <label for="p-window">기간 누적 최대 (DEMO)</label>
+      <input id="p-window" type="number" step="0.01" min="0">
+      <label for="p-seconds">기간 (초)</label>
+      <input id="p-seconds" type="number" min="1">
+      <div class="row" style="margin-top:12px">
+        <button id="p-save" class="primary">정책 재발급</button>
+        <button id="p-revoke">철회</button>
+      </div>
+      <p id="p-msg" class="note"></p>
+    </section>
+  </aside>
+
+  <section>
+    <div class="panel">
+      <h2>결제 흐름</h2>
+      <div class="row">
+        <select id="endpoint" style="flex:1;min-width:220px"></select>
+        <button id="run-all" class="primary">전체 실행</button>
+        <button id="reset">초기화</button>
+      </div>
+      <p id="ep-desc" class="note"></p>
+
+      <div class="steps" style="margin-top:12px">
+        <div class="step" id="s1">
+          <div class="step-head"><span class="step-title">① 결제 없이 API 호출<small>Agent → Resource Server</small></span><button data-step="1">실행</button></div>
+          <div class="out"></div>
+        </div>
+        <div class="step" id="s2">
+          <div class="step-head"><span class="step-title">② 지갑에 결제 서명 요청<small>위임 정책 확인 → Key Custody 서명</small></span><button data-step="2" disabled>실행</button></div>
+          <div class="out"></div>
+        </div>
+        <div class="step" id="s3">
+          <div class="step-head"><span class="step-title">③ X-PAYMENT 헤더로 재요청<small>Resource Server → Facilitator /verify</small></span><button data-step="3" disabled>실행</button></div>
+          <div class="out"></div>
+        </div>
+        <div class="step" id="s4">
+          <div class="step-head"><span class="step-title">④ 온체인 정산 확인<small>Facilitator /settle → transferWithAuthorization</small></span><button data-step="4" disabled>실행</button></div>
+          <div class="out"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>공격 시나리오</h2>
+      <p class="note" style="margin-top:0">결제가 악용되지 않는지 확인합니다. 재사용은 ③을 마친 뒤에 할 수 있고, 나머지는 선택한 API로 새 결제를 서명해서 시도합니다.</p>
+      <div class="row" style="margin-top:10px">
+        <button id="a-replay" disabled>같은 결제 다시 보내기</button>
+        <button id="a-burst">같은 결제 동시 5건</button>
+        <button id="a-tamper">서명 변조</button>
+      </div>
+      <div id="attack-out" class="attack-result"></div>
+    </div>
+  </section>
+</main>
+
+<section class="panel logs">
+  <div class="logs-head">
+    <h2>서비스 로그 <span class="filter-note" id="log-filter"></span></h2>
+    <div class="row">
+      <button id="log-unfilter" hidden>필터 해제</button>
+      <button id="log-clear">지우기</button>
+    </div>
+  </div>
+  <p class="note" style="margin:-4px 0 12px">같은 색 태그(#nonce)는 같은 결제입니다. 태그를 누르면 그 결제의 로그만 보입니다.</p>
+  <div class="lanes">
+    <div class="lane" data-service="resourceServer"><div class="lane-title">Resource Server <small>증권사·쇼핑 API · :4002</small></div><div class="lane-body"></div></div>
+    <div class="lane" data-service="agentWallet"><div class="lane-title">Agent Wallet <small>위임 정책 + 키 보관 · :4003</small></div><div class="lane-body"></div></div>
+    <div class="lane" data-service="facilitator"><div class="lane-title">Facilitator <small>검증 · 온체인 정산 · :4001</small></div><div class="lane-body"></div></div>
+  </div>
+</section>
+
+<script>
+const ENDPOINTS = [
+  { id: "quote", label: "증권 · 시세 조회 (005930)", method: "GET", path: "/securities/quotes/005930",
+    desc: "가격 0.01 DEMO. 기본 정책 안에서 결제됩니다." },
+  { id: "portfolio", label: "증권 · 잔고 조회", method: "GET", path: "/securities/portfolio",
+    desc: "가격 0.01 DEMO." },
+  { id: "shop", label: "쇼핑 · 장바구니 결제 (USB-C 허브)", method: "POST", path: "/shop/cart/checkout",
+    body: { items: [{ productId: "p2", quantity: 1 }] }, desc: "가격 0.03 DEMO." },
+  { id: "order", label: "증권 · 주식 주문 (한도 초과)", method: "POST", path: "/securities/orders",
+    body: { symbol: "005930", side: "buy", quantity: 1 },
+    desc: "가격 1 DEMO. 기본 정책의 건당 한도(0.1 DEMO)를 넘어서 ②에서 지갑이 서명을 거부해야 합니다." },
+];
+const DECIMALS = 6n;
+
+const $ = (id) => document.getElementById(id);
+let info = null;
+let flow = {};
+
+function fmt(raw) {
+  if (raw == null) return "–";
+  const v = BigInt(raw), unit = 10n ** DECIMALS;
+  const frac = (v % unit).toString().padStart(Number(DECIMALS), "0").replace(/0+$/, "");
+  return (v / unit).toString() + (frac ? "." + frac : "");
+}
+const toRaw = (demo) => {
+  const [i, f = ""] = String(demo).split(".");
+  return (BigInt(i || "0") * 10n ** DECIMALS + BigInt((f + "000000").slice(0, 6))).toString();
+};
+const fmtEth = (wei) => wei == null ? "–" : (Number(BigInt(wei)) / 1e18).toFixed(6);
+const short = (a) => a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "–";
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const link = (kind, v, text) => `<a href="${info.explorer}/${kind}/${v}" target="_blank" rel="noopener">${esc(text ?? short(v))}</a>`;
+const badge = (status) => {
+  const cls = status >= 200 && status < 300 ? "b-ok" : status === 402 ? "b-warn" : "b-bad";
+  return `<span class="badge ${cls}">HTTP ${status}</span>`;
+};
+const pre = (obj) => `<pre>${esc(JSON.stringify(obj, null, 2))}</pre>`;
+const ep = () => ENDPOINTS.find((e) => e.id === $("endpoint").value);
+
+async function api(method, url, body, headers = {}) {
+  const res = await fetch(url, {
+    method,
+    headers: body ? { "content-type": "application/json", ...headers } : headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data = null;
+  try { data = await res.json(); } catch {}
+  return { status: res.status, data };
+}
+const callResource = (e, xPayment) =>
+  api(e.method, "/api/rs" + e.path, e.body, xPayment ? { "x-payment": xPayment } : {});
+
+// ------------------------------------------------------------ side panel
+
+async function loadState() {
+  const res = await api("GET", "/api/state");
+  if (res.status !== 200) throw new Error(res.data?.error ?? "state failed");
+  info = res.data;
+  $("agent-addr").innerHTML = link("address", info.agent.address);
+  $("agent-demo").textContent = fmt(info.agent.demo);
+  $("agent-eth").textContent = fmtEth(info.agent.eth);
+  $("settler-addr").innerHTML = info.settler.address ? link("address", info.settler.address) : "정산 비활성";
+  $("settler-eth").textContent = fmtEth(info.settler.eth);
+  $("payto-addr").innerHTML = link("address", info.payTo.address);
+  $("payto-demo").textContent = fmt(info.payTo.demo);
+  $("asset").innerHTML = link("address", info.asset);
+  return info;
+}
+
+function fillPolicy() {
+  const p = info.delegation?.policy;
+  $("p-msg").textContent = p ? `활성 정책 ${info.delegation.id.slice(0, 8)}…` : "활성 정책 없음: 지갑이 모든 서명을 거부합니다.";
+  if (!p) return;
+  $("p-resources").value = p.allowedResources.join("\n");
+  $("p-tx").value = fmt(p.maxAmountPerTx);
+  $("p-window").value = fmt(p.maxAmountPerWindow);
+  $("p-seconds").value = p.windowSeconds;
+}
+
+$("refresh").onclick = () => loadState().catch(showFatal);
+
+$("topup").onclick = async () => {
+  $("topup").disabled = true;
+  $("topup-msg").textContent = "전송 중… (블록 확정까지 10~20초)";
+  const res = await api("POST", "/api/topup");
+  $("topup").disabled = false;
+  if (res.status !== 200) { $("topup-msg").innerHTML = `<span class="error">${esc(res.data?.error)}</span>`; return; }
+  $("topup-msg").innerHTML = `충전 완료: ${link("tx", res.data.txHash)}`;
+  loadState();
+};
+
+$("p-save").onclick = async () => {
+  const body = {
+    allowedResources: $("p-resources").value.split("\n").map((s) => s.trim()).filter(Boolean),
+    maxAmountPerTx: toRaw($("p-tx").value),
+    maxAmountPerWindow: toRaw($("p-window").value),
+    windowSeconds: Number($("p-seconds").value),
+  };
+  const res = await api("POST", "/api/delegation", body);
+  if (res.status !== 200) { $("p-msg").innerHTML = `<span class="error">${esc(res.data?.error)}</span>`; return; }
+  await loadState(); fillPolicy();
+  $("p-msg").textContent = `새 정책 발급 ${res.data.id.slice(0, 8)}… (이전 정책은 철회됨, 누적 사용량 초기화)`;
+};
+
+$("p-revoke").onclick = async () => {
+  await api("DELETE", "/api/delegation");
+  await loadState(); fillPolicy();
+};
+
+// ------------------------------------------------------------ flow
+
+function out(step, html) { document.querySelector(`#s${step} .out`).innerHTML = html; }
+function enable(step, on) { document.querySelector(`button[data-step="${step}"]`).disabled = !on; }
+
+function resetFlow() {
+  flow = {};
+  for (const s of [1, 2, 3, 4]) { out(s, ""); enable(s, s === 1); }
+  $("a-replay").disabled = true;
+  $("ep-desc").textContent = ep().desc;
+}
+
+async function step1() {
+  const e = ep();
+  const res = await callResource(e);
+  if (res.status !== 402) {
+    out(1, `${badge(res.status)} <p class="summary error">402가 아닌 응답입니다.</p>${pre(res.data)}`);
+    return false;
+  }
+  flow.requirements = res.data.requirements;
+  const r = flow.requirements;
+  out(1, `${badge(402)}
+    <p class="summary">결제가 필요합니다: <b>${fmt(r.amount)} DEMO</b> → ${link("address", r.payTo)} (${esc(r.network)}, scheme ${esc(r.scheme)})</p>
+    <details><summary>PaymentRequirements</summary>${pre(r)}</details>`);
+  enable(2, true);
+  return true;
+}
+
+async function step2() {
+  const e = ep();
+  const res = await api("POST", "/api/aw/sign-payment", {
+    agentId: info.agent.id, resource: info.resourceServerUrl + e.path, requirements: flow.requirements,
+  });
+  if (res.status !== 200) {
+    out(2, `${badge(res.status)} <p class="summary error">지갑이 서명을 거부했습니다: <b>${esc(res.data?.error)}</b></p>
+      <p class="note">위임 정책(Permission Delegation)이 막았기 때문에 Key Custody는 서명하지 않았습니다.</p>`);
+    return false;
+  }
+  flow.payment = res.data;
+  const a = res.data.paymentPayload.payload.authorization;
+  out(2, `${badge(200)}
+    <p class="summary">정책 통과 → EIP-3009 <code>TransferWithAuthorization</code> 서명 완료 ${chip(a.nonce.slice(2, 8))}. 유효기간 ${new Date(a.validBefore * 1000).toLocaleTimeString()}까지.</p>
+    <details><summary>서명된 결제 (X-PAYMENT 디코딩)</summary>${pre(res.data.paymentPayload)}</details>`);
+  enable(3, true);
+  return true;
+}
+
+async function step3() {
+  flow.fromBlock = (await loadState()).block;
+  flow.before = { agent: info.agent.demo, payTo: info.payTo.demo };
+  const res = await callResource(ep(), flow.payment.xPayment);
+  if (res.status !== 200) {
+    out(3, `${badge(res.status)} <p class="summary error">결제가 거부되었습니다: ${esc(res.data?.error)}</p>${pre(res.data)}`);
+    return false;
+  }
+  out(3, `${badge(200)}
+    <p class="summary">Facilitator가 서명·잔액·nonce를 검증했고, API 응답을 받았습니다. 정산은 응답 뒤에 비동기로 진행됩니다.</p>
+    ${pre(res.data)}`);
+  enable(4, true);
+  $("a-replay").disabled = false;
+  return true;
+}
+
+async function waitSettlement(payment, fromBlock, onTick) {
+  const a = payment.paymentPayload.payload.authorization;
+  const started = Date.now();
+  while (Date.now() - started < 180_000) {
+    const res = await api("GET", `/api/settlement?from=${a.from}&nonce=${a.nonce}&fromBlock=${fromBlock}`);
+    if (res.data?.settled || res.data?.failed) return res.data;
+    onTick?.(Math.round((Date.now() - started) / 1000));
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  return null;
+}
+
+async function step4() {
+  const s = await waitSettlement(flow.payment, flow.fromBlock, (sec) =>
+    out(4, `<span class="badge b-warn">대기 중</span> <span class="note">블록에 포함되기를 기다리는 중… ${sec}초</span>`));
+  if (!s) { out(4, `<p class="summary error">3분 안에 정산 트랜잭션을 찾지 못했습니다. demo-ui/logs/resourceServer.log를 확인하세요.</p>`); return false; }
+  if (s.failed) { out(4, `<span class="badge b-bad">정산 실패</span><p class="summary error">${esc(s.reason)}</p>`); return false; }
+  await loadState();
+  const paid = BigInt(flow.before.agent) - BigInt(info.agent.demo);
+  const got = BigInt(info.payTo.demo) - BigInt(flow.before.payTo);
+  const gasPayerIsSettler = info.settler.address && s.sender.toLowerCase() === info.settler.address.toLowerCase();
+  out(4, `<span class="badge ${s.status === "success" ? "b-ok" : "b-bad"}">${s.status === "success" ? "정산 완료" : "트랜잭션 실패"}</span>
+    <dl class="kv" style="margin-top:8px">
+      <dt>트랜잭션</dt><dd>${link("tx", s.txHash, s.txHash.slice(0, 18) + "…")}</dd>
+      <dt>블록</dt><dd>${s.blockNumber}</dd>
+      <dt>가스 지불</dt><dd>${link("address", s.sender)} ${gasPayerIsSettler ? "(Facilitator)" : ""} · ${s.gasUsed?.toLocaleString()} gas</dd>
+      <dt>에이전트 DEMO</dt><dd>${fmt(flow.before.agent)} → ${fmt(info.agent.demo)} (−${fmt(paid)})</dd>
+      <dt>판매자 DEMO</dt><dd>${fmt(flow.before.payTo)} → ${fmt(info.payTo.demo)} (+${fmt(got)})</dd>
+      <dt>에이전트 ETH</dt><dd>${fmtEth(info.agent.eth)} (가스 0)</dd>
+    </dl>`);
+  return true;
+}
+
+const STEPS = { 1: step1, 2: step2, 3: step3, 4: step4 };
+async function runStep(n) {
+  const btn = document.querySelector(`button[data-step="${n}"]`);
+  btn.disabled = true;
+  try { return await STEPS[n](); }
+  catch (err) { out(n, `<p class="summary error">${esc(err.message)}</p>`); return false; }
+  finally { if (n === 1) btn.disabled = false; }
+}
+document.querySelectorAll("button[data-step]").forEach((b) => (b.onclick = () => runStep(Number(b.dataset.step))));
+
+$("run-all").onclick = async () => {
+  $("run-all").disabled = true;
+  resetFlow();
+  for (const n of [1, 2, 3, 4]) if (!(await runStep(n))) break;
+  $("run-all").disabled = false;
+};
+$("reset").onclick = resetFlow;
+$("endpoint").onchange = resetFlow;
+
+// ------------------------------------------------------------ attacks
+
+async function freshPayment() {
+  const e = ep();
+  const unpaid = await callResource(e);
+  if (unpaid.status !== 402) throw new Error(`402가 아닌 응답: ${unpaid.status}`);
+  const signed = await api("POST", "/api/aw/sign-payment", {
+    agentId: info.agent.id, resource: info.resourceServerUrl + e.path, requirements: unpaid.data.requirements,
+  });
+  if (signed.status !== 200) throw new Error(`지갑이 서명을 거부: ${signed.data?.error}`);
+  return signed.data;
+}
+
+function attackOut(html) { $("attack-out").innerHTML = html; }
+async function guarded(btn, fn) {
+  btn.disabled = true;
+  try { await fn(); } catch (err) { attackOut(`<p class="error">${esc(err.message)}</p>`); }
+  finally { btn.disabled = false; }
+}
+
+$("a-replay").onclick = () => guarded($("a-replay"), async () => {
+  const res = await callResource(ep(), flow.payment.xPayment);
+  attackOut(`<p><b>같은 결제 다시 보내기</b> ${badge(res.status)} ${res.status === 402 ? "→ 차단됨" : "→ <span class='error'>통과됨 (문제)</span>"}</p>
+    <p class="note">${esc(res.data?.error ?? "")}</p>`);
+});
+
+$("a-burst").onclick = () => guarded($("a-burst"), async () => {
+  attackOut(`<p class="note">새 결제를 서명하고 동시에 5번 보내는 중…</p>`);
+  const payment = await freshPayment();
+  const fromBlock = (await loadState()).block;
+  const results = await Promise.all(Array.from({ length: 5 }, () => callResource(ep(), payment.xPayment)));
+  const ok = results.filter((r) => r.status === 200).length;
+  const render = (settleHtml) => attackOut(`<p><b>같은 결제 동시 5건</b> ${results.map((r) => badge(r.status)).join(" ")}</p>
+    <p class="summary">${ok === 1 ? "1건만 통과, 나머지 4건 차단" : `<span class="error">${ok}건 통과 (기대값 1)</span>`}</p>${settleHtml}`);
+  render(`<p class="note">정산 확인 중…</p>`);
+  const s = await waitSettlement(payment, fromBlock);
+  render(s?.settled ? `<p class="note">온체인 정산은 1번만: ${link("tx", s.txHash)}</p>`
+    : `<p class="note error">정산 ${s?.failed ? "실패: " + esc(s.reason) : "tx를 찾지 못했습니다."}</p>`);
+  loadState();
+});
+
+$("a-tamper").onclick = () => guarded($("a-tamper"), async () => {
+  const payment = await freshPayment();
+  const tampered = structuredClone(payment.paymentPayload);
+  const sig = tampered.payload.signature;
+  tampered.payload.signature = sig.slice(0, 10) + (sig[10] === "0" ? "1" : "0") + sig.slice(11);
+  const res = await callResource(ep(), btoa(JSON.stringify(tampered)));
+  attackOut(`<p><b>서명 변조</b> ${badge(res.status)} ${res.status === 402 ? "→ 차단됨" : "→ <span class='error'>통과됨 (문제)</span>"}</p>
+    <p class="note">${esc(res.data?.error ?? "")}</p>`);
+});
+
+// ------------------------------------------------------------ service logs
+
+let logFilter = null;
+const payColor = (pay) => `hsl(${(parseInt(pay, 16) * 137) % 360} 60% 42%)`;
+const chip = (pay) => pay ? `<button class="chip" data-pay="${pay}" style="background:${payColor(pay)}">#${pay}</button>` : "";
+
+function renderLog(e) {
+  const lane = document.querySelector(`.lane[data-service="${e.service}"] .lane-body`);
+  if (!lane) return;
+  const t = new Date(e.time);
+  const el = document.createElement("div");
+  el.className = `log ${e.level}`;
+  el.dataset.pay = e.pay ?? "";
+  if (logFilter && e.pay !== logFilter) el.hidden = true;
+  const tx = e.tx && info ? ` ${link("tx", e.tx, "tx↗")}` : "";
+  el.innerHTML = `<span class="log-time">${t.toTimeString().slice(0, 8)}</span>${esc(e.text)}${chip(e.pay)}${tx}
+    ${Object.keys(e.details ?? {}).length ? `<details><summary>상세</summary>${pre(e.details)}</details>` : ""}`;
+  const atBottom = lane.scrollHeight - lane.scrollTop - lane.clientHeight < 40;
+  lane.appendChild(el);
+  if (atBottom) lane.scrollTop = lane.scrollHeight;
+}
+
+function setLogFilter(pay) {
+  logFilter = pay;
+  document.querySelectorAll(".log").forEach((el) => (el.hidden = !!pay && el.dataset.pay !== pay));
+  $("log-filter").innerHTML = pay ? `· ${chip(pay)} 결제만 표시 중` : "";
+  $("log-unfilter").hidden = !pay;
+}
+
+document.addEventListener("click", (ev) => {
+  const c = ev.target.closest(".chip");
+  if (c) setLogFilter(logFilter === c.dataset.pay ? null : c.dataset.pay);
+});
+$("log-unfilter").onclick = () => setLogFilter(null);
+$("log-clear").onclick = () => document.querySelectorAll(".lane-body").forEach((l) => (l.innerHTML = ""));
+
+new EventSource("/api/logs").onmessage = (m) => renderLog(JSON.parse(m.data));
+
+// ------------------------------------------------------------ init
+
+function showFatal(err) {
+  document.querySelector("main").insertAdjacentHTML("afterbegin",
+    `<div class="panel error" style="grid-column:1/-1">데모 서버 오류: ${esc(err.message)}</div>`);
+}
+
+$("endpoint").innerHTML = ENDPOINTS.map((e) => `<option value="${e.id}">${esc(e.label)}</option>`).join("");
+resetFlow();
+loadState().then(fillPolicy).catch(showFatal);
+</script>
+</body>
+</html>
