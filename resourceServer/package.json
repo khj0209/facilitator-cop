@@ -1,0 +1,20 @@
+{
+  "name": "resource-server",
+  "version": "0.1.0",
+  "description": "Example paid securities API gated by x402 payment middleware",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "fastify": "^5.12.5",
+    "x402-contracts": "file:../x402-contracts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3"
+  }
+}
