@@ -7,7 +7,7 @@ import {
   type ApprovalTokenClaims,
   type PaymentPayload,
 } from "x402-contracts";
-import { issueApprovalToken } from "./delegation/approvalToken.js";
+import { TOKEN_TTL_SECONDS, issueApprovalToken } from "./delegation/approvalToken.js";
 import { authorize, commitSpend, createDelegation, revokeDelegation } from "./delegation/store.js";
 import { LocalKeyStoreProvider } from "./keyCustody/localProvider.js";
 
@@ -58,6 +58,10 @@ export function registerRoutes(app: FastifyInstance) {
     }
     try {
       const { address } = await localProvider.createWallet(parsed.data.agentId);
+      req.log.info(
+        { event: "wallet.created", agentId: parsed.data.agentId, address, provider: "local" },
+        "wallet created",
+      );
       return { agentId: parsed.data.agentId, address, keyStoreProvider: "local" };
     } catch (err) {
       return reply.code(409).send({ error: err instanceof Error ? err.message : "failed" });
@@ -70,6 +74,18 @@ export function registerRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: "invalid delegation policy", issues: parsed.error.issues });
     }
     const { id } = createDelegation(parsed.data);
+    req.log.info(
+      {
+        event: "delegation.created",
+        delegationId: id,
+        agentId: parsed.data.agentId,
+        allowedResources: parsed.data.allowedResources,
+        maxAmountPerTx: parsed.data.maxAmountPerTx,
+        maxAmountPerWindow: parsed.data.maxAmountPerWindow,
+        windowSeconds: parsed.data.windowSeconds,
+      },
+      "delegation created",
+    );
     return { id, policy: parsed.data };
   });
 
@@ -78,6 +94,7 @@ export function registerRoutes(app: FastifyInstance) {
     if (!revokeDelegation(id)) {
       return reply.code(404).send({ error: "delegation not found" });
     }
+    req.log.info({ event: "delegation.revoked", delegationId: id }, "delegation revoked");
     return { revoked: true };
   });
 
@@ -88,11 +105,34 @@ export function registerRoutes(app: FastifyInstance) {
     }
     const { agentId, resource, requirements } = parsed.data;
     const amount = BigInt(requirements.amount);
+    // EIP-3009 nonce, also used to correlate this payment across services' logs.
+    const nonce = `0x${randomBytes(32).toString("hex")}`;
+    req.log.info(
+      { event: "sign.requested", agentId, resource, amount: requirements.amount, payTo: requirements.payTo, nonce },
+      "payment signature requested",
+    );
 
     const authResult = authorize(agentId, resource, requirements.network, amount);
     if (!authResult.ok) {
+      req.log.warn(
+        { event: "policy.denied", agentId, resource, amount: requirements.amount, reason: authResult.reason, nonce },
+        "delegation policy denied payment",
+      );
       return reply.code(403).send({ error: authResult.reason });
     }
+    req.log.info(
+      {
+        event: "policy.approved",
+        agentId,
+        policyId: authResult.policyId,
+        amount: requirements.amount,
+        maxAmountPerTx: authResult.policy?.maxAmountPerTx,
+        spentInWindow: authResult.spentInWindow?.toString(),
+        maxAmountPerWindow: authResult.policy?.maxAmountPerWindow,
+        nonce,
+      },
+      "delegation policy approved payment",
+    );
 
     let address: string;
     try {
@@ -119,7 +159,7 @@ export function registerRoutes(app: FastifyInstance) {
       // which can trail wall-clock time by a block or more when the Facilitator settles.
       validAfter: String(now - 600),
       validBefore: String(now + requirements.maxTimeoutSeconds),
-      nonce: `0x${randomBytes(32).toString("hex")}`,
+      nonce,
     };
 
     const claims: ApprovalTokenClaims = {
@@ -130,6 +170,10 @@ export function registerRoutes(app: FastifyInstance) {
       nonce: randomUUID(),
     };
     const approvalToken = issueApprovalToken(claims);
+    req.log.info(
+      { event: "approval.issued", agentId, tokenId: claims.nonce, ttlSeconds: TOKEN_TTL_SECONDS, nonce },
+      "approval token issued to key custody",
+    );
 
     let signature: string;
     try {
@@ -155,7 +199,15 @@ export function registerRoutes(app: FastifyInstance) {
         },
       });
       signature = result.signature;
+      req.log.info(
+        { event: "custody.signed", agentId, provider: localProvider.type, signer: address, nonce },
+        "key custody signed TransferWithAuthorization",
+      );
     } catch (err) {
+      req.log.error(
+        { event: "custody.failed", agentId, reason: err instanceof Error ? err.message : String(err), nonce },
+        "key custody refused to sign",
+      );
       return reply.code(500).send({ error: err instanceof Error ? err.message : "signing failed" });
     }
 

@@ -45,6 +45,9 @@ export interface AuthorizationCheck {
   ok: boolean;
   reason?: string;
   policyId?: string;
+  /** Already spent in the current window, before this payment. Set when ok. */
+  spentInWindow?: bigint;
+  policy?: DelegationPolicy;
 }
 
 export function authorize(
@@ -77,7 +80,7 @@ export function authorize(
     return { ok: false, reason: "amount exceeds maxAmountPerWindow" };
   }
 
-  return { ok: true, policyId: stored.id };
+  return { ok: true, policyId: stored.id, spentInWindow, policy };
 }
 
 // Call only after signing actually succeeds, so a failed sign doesn't burn window budget.

@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 import type { ApprovalTokenClaims } from "x402-contracts";
 
 const SECRET = process.env.APPROVAL_TOKEN_SECRET ?? "dev-only-insecure-secret-change-me";
-const TOKEN_TTL_SECONDS = 30;
+export const TOKEN_TTL_SECONDS = 30;
 
 export function issueApprovalToken(claims: ApprovalTokenClaims): string {
   return jwt.sign(claims, SECRET, { expiresIn: TOKEN_TTL_SECONDS });
