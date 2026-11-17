@@ -51,6 +51,10 @@ export function requirePayment(opts: PaymentOptions) {
 
     const header = req.headers["x-payment"];
     if (!header || typeof header !== "string") {
+      req.log.info(
+        { event: "payment.required", method: req.method, path: req.url, amount, payTo: requirements.payTo },
+        "payment required (402)",
+      );
       return reply.code(402).send({ error: "payment required", requirements });
     }
 
@@ -59,12 +63,20 @@ export function requirePayment(opts: PaymentOptions) {
       const decoded = Buffer.from(header, "base64").toString("utf8");
       payload = PaymentPayloadSchema.parse(JSON.parse(decoded));
     } catch {
+      req.log.warn({ event: "payment.malformed", path: req.url }, "invalid X-PAYMENT header");
       return reply.code(402).send({ error: "invalid X-PAYMENT header", requirements });
     }
+
+    const { from: payer, nonce } = payload.payload.authorization;
+    req.log.info(
+      { event: "payment.received", path: req.url, payer, amount: payload.payload.authorization.value, nonce },
+      "X-PAYMENT received, verifying with facilitator",
+    );
 
     // Claim before the async /verify call so two concurrent replays can't both pass.
     const key = paymentKey(payload);
     if (acceptedPayments.has(key)) {
+      req.log.warn({ event: "payment.replay_blocked", payer, nonce }, "payment already used");
       return reply.code(402).send({ error: "payment already used", requirements });
     }
     acceptedPayments.add(key);
@@ -83,11 +95,13 @@ export function requirePayment(opts: PaymentOptions) {
 
     if (!verifyRes.isValid) {
       acceptedPayments.delete(key);
+      req.log.warn({ event: "payment.rejected", payer, reason: verifyRes.reason, nonce }, "payment rejected");
       return reply
         .code(402)
         .send({ error: verifyRes.reason ?? "payment invalid", requirements });
     }
 
+    req.log.info({ event: "payment.verified", payer, amount, nonce }, "payment verified, serving resource");
     req.paymentContext = { payload, requirements };
   };
 }
@@ -95,8 +109,19 @@ export function requirePayment(opts: PaymentOptions) {
 export async function settlePaymentOnResponse(req: FastifyRequest, reply: FastifyReply) {
   const ctx = req.paymentContext;
   if (!ctx) return;
+  const { from: payer, nonce } = ctx.payload.payload.authorization;
   // Only charge for requests that were actually served.
-  if (reply.statusCode >= 400) return;
+  if (reply.statusCode >= 400) {
+    req.log.info(
+      { event: "payment.settle_skipped", statusCode: reply.statusCode, payer, nonce },
+      "request failed, payment not settled",
+    );
+    return;
+  }
+  req.log.info(
+    { event: "payment.settle_requested", statusCode: reply.statusCode, payer, nonce },
+    "resource served, requesting settlement",
+  );
   fetch(`${config.facilitatorUrl}/settle`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -104,12 +129,11 @@ export async function settlePaymentOnResponse(req: FastifyRequest, reply: Fastif
   })
     .then((r) => r.json() as Promise<SettleResult>)
     .then((result) => {
-      const { from: payer, nonce } = ctx.payload.payload.authorization;
       if (result.success) {
-        req.log.info({ txHash: result.txHash, network: result.network, payer, nonce }, "payment settled");
+        req.log.info({ event: "payment.settled", txHash: result.txHash, network: result.network, payer, nonce }, "payment settled");
       } else {
-        req.log.error({ reason: result.reason, txHash: result.txHash, payer, nonce }, "payment settlement failed");
+        req.log.error({ event: "payment.settle_failed", reason: result.reason, txHash: result.txHash, payer, nonce }, "payment settlement failed");
       }
     })
-    .catch((err) => req.log.error({ err }, "settle call failed"));
+    .catch((err) => req.log.error({ event: "payment.settle_failed", err, payer, nonce }, "settle call failed"));
 }
