@@ -18,7 +18,7 @@ import type {
   SettleResult,
   VerifyResult,
 } from "x402-contracts";
-import type { ChainAdapter } from "./types.js";
+import type { AdapterLogger, ChainAdapter } from "./types.js";
 
 const TRANSFER_WITH_AUTHORIZATION_TYPES = {
   TransferWithAuthorization: [
@@ -78,6 +78,7 @@ export interface EvmAdapterOptions {
   rpcUrl?: string;
   /** Facilitator's gas-paying key. Without it, /verify still works but /settle is refused. */
   settlerPrivateKey?: Hex;
+  logger?: AdapterLogger;
 }
 
 export class EvmAdapter implements ChainAdapter {
@@ -92,12 +93,14 @@ export class EvmAdapter implements ChainAdapter {
   // Authorizations already submitted (or being submitted) by this process, so a duplicate
   // /settle doesn't burn gas on a transaction that is bound to revert.
   private readonly submitted = new Set<string>();
+  private readonly log?: AdapterLogger;
 
   constructor(
     public readonly network: Network,
     opts: EvmAdapterOptions,
   ) {
     this.chain = opts.chain;
+    this.log = opts.logger;
     this.asset = opts.asset;
     const transport = http(opts.rpcUrl);
     this.publicClient = createPublicClient({ chain: opts.chain, transport });
@@ -209,6 +212,7 @@ export class EvmAdapter implements ChainAdapter {
     const { from, nonce } = payload.payload.authorization;
     const key = `${from.toLowerCase()}:${nonce.toLowerCase()}`;
     if (this.submitted.has(key)) {
+      this.log?.warn({ event: "settle.duplicate", payer: from, nonce }, "authorization already submitted, skipping");
       return Promise.resolve({
         success: false,
         network: this.network,
@@ -232,11 +236,12 @@ export class EvmAdapter implements ChainAdapter {
     payload: PaymentPayload,
     requirements: PaymentRequirements,
   ): Promise<SettleResult> {
-    const fail = (reason: string): SettleResult => ({
-      success: false,
-      network: this.network,
-      reason,
-    });
+    const { authorization, signature } = payload.payload;
+    const { from: payer, nonce } = authorization;
+    const fail = (reason: string): SettleResult => {
+      this.log?.error({ event: "settle.failed", payer, reason, nonce }, "settlement failed");
+      return { success: false, network: this.network, reason };
+    };
 
     if (!this.walletClient || !this.settler) {
       return fail("facilitator settler key not configured");
@@ -248,7 +253,6 @@ export class EvmAdapter implements ChainAdapter {
       return fail(`verification failed: ${verification.reason}`);
     }
 
-    const { authorization, signature } = payload.payload;
     const { r, s, v, yParity } = parseSignature(signature as Hex);
 
     try {
@@ -272,10 +276,28 @@ export class EvmAdapter implements ChainAdapter {
         ],
       });
       const txHash = await this.walletClient.writeContract(request);
+      this.log?.info(
+        { event: "settle.submitted", txHash, settler: this.settler.address, payer, nonce },
+        "transferWithAuthorization submitted",
+      );
       const receipt = await this.publicClient.waitForTransactionReceipt({ hash: txHash });
       if (receipt.status !== "success") {
+        this.log?.error({ event: "settle.reverted", txHash, payer, nonce }, "settlement transaction reverted");
         return { success: false, network: this.network, txHash, reason: "transaction reverted" };
       }
+      this.log?.info(
+        {
+          event: "settle.confirmed",
+          txHash,
+          blockNumber: Number(receipt.blockNumber),
+          gasUsed: Number(receipt.gasUsed),
+          payer,
+          amount: authorization.value,
+          to: authorization.to,
+          nonce,
+        },
+        "settlement confirmed on-chain",
+      );
       return { success: true, network: this.network, txHash };
     } catch (err) {
       return fail(`settlement failed: ${errorMessage(err)}`);

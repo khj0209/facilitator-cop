@@ -28,7 +28,17 @@ export function registerRoutes(
         .code(400)
         .send({ isValid: false, reason: `network ${requirements.network} not supported` });
     }
-    return adapter.verifyPayment(payload, requirements);
+    const result = await adapter.verifyPayment(payload, requirements);
+    const { from: payer, value: amount, nonce } = payload.payload.authorization;
+    if (result.isValid) {
+      req.log.info(
+        { event: "verify.passed", network: requirements.network, payer, amount, nonce },
+        "payment verified (signature, amount, payee, balance, nonce)",
+      );
+    } else {
+      req.log.warn({ event: "verify.failed", payer, reason: result.reason, nonce }, "payment verification failed");
+    }
+    return result;
   });
 
   app.post("/settle", async (req, reply) => {
@@ -45,6 +55,8 @@ export function registerRoutes(
         .code(400)
         .send({ success: false, network: requirements.network, reason: `network ${requirements.network} not supported` });
     }
+    const { from: payer, value: amount, nonce } = payload.payload.authorization;
+    req.log.info({ event: "settle.requested", network: requirements.network, payer, amount, nonce }, "settlement requested");
     return adapter.settlePayment(payload, requirements);
   });
 }

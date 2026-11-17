@@ -12,6 +12,8 @@ const ETHEREUM_SEPOLIA_DEMO_COIN = "0x025311Ca250150E9c3684b614566c9f187a47e16";
 
 const settlerPrivateKey = process.env.FACILITATOR_PRIVATE_KEY as Hex | undefined;
 
+const app = Fastify({ logger: true });
+
 // GIWA adapter (chainId 91342) is added in Phase 5 once the coin contract is deployed there.
 const adapters: Partial<Record<Network, ChainAdapter>> = {
   ethereum: new EvmAdapter("ethereum", {
@@ -19,10 +21,10 @@ const adapters: Partial<Record<Network, ChainAdapter>> = {
     asset: (process.env.ETHEREUM_ASSET_ADDRESS ?? ETHEREUM_SEPOLIA_DEMO_COIN) as Hex,
     rpcUrl: process.env.ETHEREUM_RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com",
     settlerPrivateKey,
+    logger: app.log,
   }),
 };
 
-const app = Fastify({ logger: true });
 registerRoutes(app, adapters);
 
 if (settlerPrivateKey) {
