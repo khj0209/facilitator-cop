@@ -280,6 +280,51 @@ async function findSettlement(from, nonce, fromBlock) {
   };
 }
 
+// ------------------------------------------------------------------ voice order (G2 glasses)
+
+// Runs the whole paid call server-side for an agent that isn't a browser (the G2 glasses app):
+// unpaid call → 402, Agent Wallet signs (or the policy refuses), paid retry → 200. Settlement then
+// happens on its own, so the services' log lines tell the rest of the story on the page.
+async function voiceOrder(input) {
+  const symbol = String(input?.symbol ?? "").trim().toUpperCase();
+  const side = input?.side;
+  const quantity = Number(input?.quantity);
+  if (!/^[A-Z0-9.]{1,12}$/.test(symbol)) return { ok: false, error: "symbol must be a ticker or 6-digit code" };
+  if (side !== "buy" && side !== "sell") return { ok: false, error: "side must be buy or sell" };
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1_000_000) return { ok: false, error: "quantity must be a positive integer" };
+  const name = typeof input.name === "string" ? input.name.slice(0, 40) : "";
+  const utterance = typeof input.utterance === "string" ? input.utterance.slice(0, 200) : "";
+
+  const order = { symbol, side, quantity };
+  const label = `${name ? `${name}(${symbol})` : symbol} ${quantity}주 ${side === "buy" ? "매수" : "매도"}`;
+  const log = (level, text, extra = {}) =>
+    publishLog({ service: "agentWallet", time: Date.now(), pay: null, tx: null, details: { ...order, utterance }, level, text, ...extra });
+  log("info", `🎤 G2 안경 음성 주문 · ${label}${utterance ? ` · "${utterance}"` : ""}`);
+
+  const resource = `${SERVICE_URL.rs}/securities/orders`;
+  const call = (headers = {}) =>
+    fetch(resource, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(order) });
+
+  const unpaid = await call();
+  if (unpaid.status !== 402) return { ok: false, error: `expected 402 from the brokerage API, got ${unpaid.status}` };
+  const { requirements } = await unpaid.json();
+
+  const signed = await fetch(`${SERVICE_URL.aw}/sign-payment`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ agentId: AGENT_ID, resource, requirements }),
+  });
+  const signedBody = await signed.json();
+  if (!signed.ok) return { ok: false, stage: "agent wallet (delegation policy)", error: signedBody.error, price: requirements.amount };
+  const pay = signedBody.paymentPayload.payload.authorization.nonce.slice(2, 8);
+
+  const paid = await call({ "x-payment": signedBody.xPayment });
+  const result = await paid.json();
+  if (!paid.ok) return { ok: false, stage: "payment verification", error: result.error, price: requirements.amount };
+  log("ok", `주문 체결 · ${result.orderId} → 안경에 응답`, { pay });
+  return { ok: true, order: result, paid: `${Number(requirements.amount) / 1e6} DEMO`, settlement: "on-chain settlement follows in ~10-20s" };
+}
+
 // ------------------------------------------------------------------ http
 
 function send(res, status, body, type = "application/json") {
@@ -330,6 +375,9 @@ const server = createServer(async (req, res) => {
       return send(res, 200, { revoked: true });
     }
     if (req.method === "POST" && url.pathname === "/api/topup") return send(res, 200, { txHash: topUp() });
+    if (req.method === "POST" && url.pathname === "/api/voice-order") {
+      return send(res, 200, await voiceOrder(JSON.parse((await readBody(req)) || "{}")));
+    }
     if (req.method === "GET" && url.pathname === "/api/settlement") {
       const { from, nonce, fromBlock } = Object.fromEntries(url.searchParams);
       return send(res, 200, await findSettlement(from, nonce, fromBlock));
