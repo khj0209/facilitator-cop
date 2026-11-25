@@ -307,6 +307,12 @@ async function proxy(req, res, service, rest) {
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${UI_PORT}`);
+  // Lets the G2 glasses assistant (another origin, reached via `adb reverse tcp:4000 tcp:4000`) call /api/*.
+  // shortcut: any origin may call, fine for a local testnet demo; restrict to the assistant's origin before exposing this beyond localhost.
+  res.setHeader("access-control-allow-origin", "*");
+  res.setHeader("access-control-allow-headers", "content-type, x-payment");
+  res.setHeader("access-control-allow-methods", "GET, POST, DELETE, OPTIONS");
+  if (req.method === "OPTIONS") return send(res, 204, "", "text/plain");
   try {
     if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
       return send(res, 200, readFileSync(path.join(HERE, "index.html"), "utf8"), "text/html; charset=utf-8");
